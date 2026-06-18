@@ -1,208 +1,202 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const AdminView = () => {
-  const [adminData, setAdminData] = useState({
-    invitados: '',
-    clima: 'Templado',
-    horario: 'Día',
-    horasDuracion: 8,
-    formatoMenu: 'Plato Servido'
+  const navigate = useNavigate();
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [logistica, setLogistica] = useState(null);
+  const [loadingCalc, setLoadingCalc] = useState(false);
+
+
+  const [calcConfig, setCalcConfig] = useState({
+    invitados: 0, clima: 'Templado', horario: 'Noche', horasDuracion: 8,
+    formatoMenu: 'Plato Servido', alcohol: false, calientes: false, helados: false
   });
 
-  const [resultado, setResultado] = useState(null);
-  const [solicitudes, setSolicitudes] = useState([]); 
-  const [loading, setLoading] = useState(false);
-  const [loadingTabla, setLoadingTabla] = useState(true);
-  const [error, setError] = useState(null);
 
-  
+  useEffect(() => {
+    const user = localStorage.getItem('usuarioLogueado');
+    if (!user) {
+      navigate('/login'); 
+    } else {
+      cargarSolicitudes();
+    }
+  }, [navigate]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('usuarioLogueado');
+    navigate('/login');
+  };
+
+  // --- 2. CARGA Y GESTIÓN DE DATOS ---
   const cargarSolicitudes = async () => {
     try {
       const response = await fetch('http://localhost:8080/api/v1/weddings/solicitudes');
-      if (!response.ok) throw new Error('No se pudo cargar la lista de solicitudes.');
-      const data = await response.json();
-      setSolicitudes(data);
+      if (response.ok) {
+        const data = await response.json();
+        setSolicitudes(data);
+      }
     } catch (err) {
-      console.error(err.message);
-    } finally {
-      setLoadingTabla(false);
+      console.error('Error al cargar solicitudes', err);
     }
   };
 
-  
-  useEffect(() => {
-    cargarSolicitudes();
-  }, []);
-
-  const handleChange = (e) => {
-    setAdminData({ ...adminData, [e.target.name]: e.target.value });
+  const cambiarEstado = async (id, nuevoEstado) => {
+    try {
+      await fetch(`http://localhost:8080/api/v1/weddings/${id}/estado`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/plain' },
+        body: nuevoEstado
+      });
+      cargarSolicitudes();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setResultado(null);
 
+  const cargarDatosCalculadora = (solicitud) => {
+    setCalcConfig({
+      invitados: solicitud.numeroInvitados,
+      clima: solicitud.tipoAmbiente === 'Playa/Costa' ? 'Caluroso' : 'Templado',
+      horario: 'Noche', 
+      horasDuracion: 8,
+      formatoMenu: solicitud.tipoMenu,
+      alcohol: solicitud.bebidasAlcoholicas || false,
+      calientes: solicitud.bebidasCalientes || false,
+      helados: solicitud.heladosPostre || false
+    });
+  };
+
+  const handleCalcChange = (e) => {
+    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    setCalcConfig({ ...calcConfig, [e.target.name]: value });
+  };
+
+  const procesarCalculo = async () => {
+    setLoadingCalc(true);
     try {
       const response = await fetch('http://localhost:8080/api/v1/weddings/calcular-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            ...adminData,
-            invitados: parseInt(adminData.invitados),
-            horasDuracion: parseInt(adminData.horasDuracion)
-        }),
+        body: JSON.stringify(calcConfig)
       });
-
-      if (!response.ok) throw new Error('Error al conectar con el servidor logístico.');
-
-      const data = await response.json();
-      setResultado(data);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setLogistica(data);
+      }
     } catch (err) {
-      setError(err.message);
+      console.error('Error en cálculo', err);
     } finally {
-      setLoading(false);
+      setLoadingCalc(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-tinto-dark p-6 space-y-12 flex flex-col items-center justify-start pt-12">
-      
-      {/* SECCIÓN 1: Calculadora y Proyección */}
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <div className="min-h-screen bg-tinto-dark p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Panel de Configuración (Izquierda) */}
-        <div className="lg:col-span-5 bg-tinto-card border border-gray-800 p-8 shadow-2xl rounded-sm">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="font-serif text-2xl text-white tracking-wide uppercase">Motor Logístico</h2>
-            <span className="bg-tinto-accent text-[#0a0a0a] text-xs font-bold px-2 py-1 rounded-sm uppercase">Admin</span>
-          </div>
-          
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-xs font-semibold tracking-widest text-gray-400 uppercase mb-2">Cantidad de Invitados</label>
-              <input type="number" name="invitados" value={adminData.invitados} onChange={handleChange} min="1" className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors" required placeholder="Ej. 150" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold tracking-widest text-gray-400 uppercase mb-2">Clima Estimado</label>
-                <select name="clima" value={adminData.clima} onChange={handleChange} className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors">
-                  <option value="Frío">Frío</option>
-                  <option value="Templado">Templado</option>
-                  <option value="Caluroso">Caluroso</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold tracking-widest text-gray-400 uppercase mb-2">Horario</label>
-                <select name="horario" value={adminData.horario} onChange={handleChange} className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors">
-                  <option value="Día">Día</option>
-                  <option value="Noche">Noche</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold tracking-widest text-gray-400 uppercase mb-2">Formato Menú</label>
-                <select name="formatoMenu" value={adminData.formatoMenu} onChange={handleChange} className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors">
-                  <option value="Plato Servido">Plato Servido</option>
-                  <option value="Buffet">Buffet</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold tracking-widest text-gray-400 uppercase mb-2">Duración (Horas)</label>
-                <input type="number" name="horasDuracion" value={adminData.horasDuracion} onChange={handleChange} min="4" className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors" required />
-              </div>
-            </div>
-
-            <button type="submit" disabled={loading} className="w-full mt-6 bg-white text-[#0a0a0a] font-bold uppercase tracking-widest py-4 rounded-sm hover:bg-gray-200 transition-colors disabled:opacity-50">
-              {loading ? 'Calculando...' : 'Procesar Variables'}
-            </button>
-            {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
-          </form>
-        </div>
-
-        {/* Panel de Resultados (Derecha) */}
-        <div className="lg:col-span-7 flex flex-col justify-center">
-          {resultado ? (
-            <div className="border border-gray-800 p-10 bg-tinto-card rounded-sm h-full flex flex-col justify-center">
-              <h3 className="font-serif text-2xl text-white mb-2 border-b border-gray-800 pb-4">Proyección Operativa</h3>
-              <p className="text-xs text-tinto-accent tracking-widest uppercase mb-8">{resultado.mensaje}</p>
-
-              <div className="space-y-8">
-                <div className="bg-[#0a0a0a] p-6 border border-gray-800 rounded-sm">
-                  <h4 className="text-xs uppercase tracking-widest text-gray-500 mb-2">Requerimiento de Personal</h4>
-                  <p className="text-5xl font-serif text-white">{resultado.cantidadGarzones} <span className="text-lg text-gray-400 font-sans tracking-wide uppercase">Garzones</span></p>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="bg-[#0a0a0a] p-6 border border-gray-800 rounded-sm">
-                    <h4 className="text-xs uppercase tracking-widest text-gray-500 mb-2">Alimentos (Proteína / Quesos)</h4>
-                    <p className="text-3xl text-white font-serif mb-1">{resultado.kgProteinaMarina} <span className="text-sm text-gray-400 font-sans">kg mar y tierra</span></p>
-                    <p className="text-xl text-gray-300 font-serif">{resultado.kgQuesos} <span className="text-sm text-gray-500 font-sans">kg selección</span></p>
-                  </div>
-                  <div className="bg-[#0a0a0a] p-6 border border-gray-800 rounded-sm">
-                    <h4 className="text-xs uppercase tracking-widest text-gray-500 mb-2">Líquidos (Alcohol / Hidratación)</h4>
-                    <p className="text-3xl text-white font-serif mb-1">{resultado.litrosCerveza} <span className="text-sm text-gray-400 font-sans">L cerveza</span></p>
-                    <p className="text-xl text-gray-300 font-serif">{resultado.litrosAgua} <span className="text-sm text-gray-500 font-sans">L agua/jugos</span></p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center border border-gray-800 p-10 h-full flex flex-col items-center justify-center bg-tinto-card rounded-sm">
-              <span className="text-gray-600 text-6xl mb-6 font-serif">⚙️</span>
-              <p className="font-serif text-gray-500 italic text-lg tracking-wide">Ingrese las variables del evento para generar el desglose logístico.</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* SECCIÓN 2: Tabla de Solicitudes Recibidas (Abajo) */}
-      <div className="w-full max-w-6xl bg-tinto-card border border-gray-800 p-8 shadow-2xl rounded-sm">
-        <div className="flex items-center justify-between mb-6 border-b border-gray-800 pb-4">
-          <h3 className="font-serif text-xl text-white tracking-wide uppercase">Solicitudes de Clientes en Espera</h3>
-          <button onClick={cargarSolicitudes} className="text-xs border border-gray-700 text-gray-400 px-3 py-1 hover:bg-gray-800 hover:text-white transition-colors rounded-sm uppercase tracking-wider">
-            🔄 Actualizar Tabla
+        
+        <div className="flex justify-between items-center bg-tinto-card p-4 border border-gray-800 rounded-sm">
+          <h1 className="text-white font-serif tracking-widest uppercase text-xl">Dashboard Administrativo</h1>
+          <button onClick={handleLogout} className="text-sm bg-red-900/50 text-red-400 px-4 py-2 hover:bg-red-800 hover:text-white transition-colors">
+            Cerrar Sesión
           </button>
         </div>
 
-        {loadingTabla ? (
-          <p className="text-gray-500 text-sm italic text-center py-6">Conectando con Neon Database...</p>
-        ) : solicitudes.length === 0 ? (
-          <p className="text-gray-500 text-sm italic text-center py-6">No hay solicitudes registradas en la base de datos aún.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-300">
-              <thead className="text-xs uppercase tracking-wider text-gray-500 bg-[#0a0a0a] border-b border-gray-800">
-                <tr>
-                  <th className="px-6 py-4">Novios</th>
-                  <th className="px-6 py-4">Contacto</th>
-                  <th className="px-6 py-4">Fecha Boda</th>
-                  <th className="px-6 py-4 text-center">Invitados</th>
-                  <th className="px-6 py-4">Menú Pref.</th>
-                  <th className="px-6 py-4">Temática</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/50">
-                {solicitudes.map((solicitud) => (
-                  <tr key={solicitud.id} className="hover:bg-gray-900/40 transition-colors">
-                    <td className="px-6 py-4 font-medium text-white">{solicitud.nombresNovios}</td>
-                    <td className="px-6 py-4 text-gray-400">{solicitud.emailContacto}</td>
-                    <td className="px-6 py-4">{solicitud.fechaBoda}</td>
-                    <td className="px-6 py-4 text-center text-tinto-accent font-mono font-bold">{solicitud.numeroInvitados}</td>
-                    <td className="px-6 py-4"><span className="bg-gray-800/60 text-gray-300 text-xs px-2 py-1 rounded-sm">{solicitud.tipoMenu}</span></td>
-                    <td className="px-6 py-4 text-gray-400 italic">{solicitud.tematicaBoda || 'No especificada'}</td>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+         
+          <div className="lg:col-span-2 bg-tinto-card border border-gray-800 rounded-sm shadow-xl overflow-hidden">
+            <div className="p-4 border-b border-gray-800 bg-[#0a0a0a]">
+              <h2 className="text-tinto-accent text-sm font-bold tracking-widest uppercase">Solicitudes en Espera</h2>
+              <p className="text-xs text-gray-500 mt-1">Haz clic en "Calcular" para enviar los datos al motor logístico.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-gray-400">
+                <thead className="text-xs uppercase tracking-wider text-gray-500 bg-[#0a0a0a] border-b border-gray-800">
+                  <tr>
+                    <th className="px-4 py-3">Cliente</th>
+                    <th className="px-4 py-3">Menú</th>
+                    <th className="px-4 py-3 text-center">Inv.</th>
+                    <th className="px-4 py-3">Estado</th>
+                    <th className="px-4 py-3 text-right">Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                  {solicitudes.map((sol) => (
+                    <tr key={sol.id} className="hover:bg-gray-900/40 transition-colors">
+                      <td className="px-4 py-3 font-medium text-white">{sol.nombresNovios}</td>
+                      <td className="px-4 py-3 text-xs">{sol.tipoMenu}</td>
+                      <td className="px-4 py-3 text-center text-tinto-accent font-bold">{sol.numeroInvitados}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-[10px] px-2 py-1 rounded-sm font-bold uppercase ${
+                          sol.estado === 'ACEPTADO' ? 'bg-green-900/50 text-green-400' :
+                          sol.estado === 'RECHAZADO' ? 'bg-red-900/50 text-red-400' : 'bg-yellow-900/50 text-yellow-400'
+                        }`}>
+                          {sol.estado || 'PENDIENTE'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 space-x-2 text-right">
+                        <button onClick={() => cargarDatosCalculadora(sol)} className="text-xs bg-blue-900/50 text-blue-400 px-2 py-1 hover:bg-blue-800 hover:text-white transition-colors">
+                          Calcular
+                        </button>
+                        <button onClick={() => cambiarEstado(sol.id, 'ACEPTADO')} className="text-xs bg-gray-800 px-2 py-1 hover:bg-green-700 text-white transition-colors">✓</button>
+                        <button onClick={() => cambiarEstado(sol.id, 'RECHAZADO')} className="text-xs bg-gray-800 px-2 py-1 hover:bg-red-700 text-white transition-colors">✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
-      </div>
 
+          
+          <div className="bg-tinto-card border border-gray-800 rounded-sm shadow-xl p-5 flex flex-col">
+            <h2 className="text-tinto-accent text-sm font-bold tracking-widest uppercase mb-4 border-b border-gray-800 pb-2">Motor Logístico</h2>
+            
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">N° Invitados</label>
+                <input type="number" name="invitados" value={calcConfig.invitados} onChange={handleCalcChange} className="w-full bg-[#0a0a0a] border border-gray-700 text-white px-2 py-1 text-sm" />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Clima</label>
+                <select name="clima" value={calcConfig.clima} onChange={handleCalcChange} className="w-full bg-[#0a0a0a] border border-gray-700 text-white px-2 py-1 text-sm">
+                  <option>Caluroso</option><option>Templado</option><option>Frío</option>
+                </select>
+              </div>
+            </div>
+
+            <button onClick={procesarCalculo} disabled={loadingCalc} className="w-full bg-tinto-accent text-black font-bold uppercase tracking-widest py-3 rounded-sm mb-6 hover:bg-yellow-600 transition-colors text-sm">
+              {loadingCalc ? 'Procesando...' : 'Procesar Variables'}
+            </button>
+
+            
+            {logistica && (
+              <div className="space-y-4 flex-grow text-sm text-gray-300">
+                <div className="bg-[#0a0a0a] p-3 border border-gray-800 rounded-sm">
+                  <h3 className="text-xs text-tinto-accent font-bold uppercase mb-2">Staff & Infraestructura</h3>
+                  <div className="flex justify-between"><span>Garzones:</span> <span className="font-bold text-white">{logistica.cantidadGarzones}</span></div>
+                  <div className="flex justify-between"><span>Mesas / Sillas:</span> <span className="font-bold text-white">{logistica.mesas} / {logistica.sillas}</span></div>
+                  <div className="flex justify-between"><span>Piezas Vajilla:</span> <span className="font-bold text-white">{logistica.piezasVajilla}</span></div>
+                  <div className="flex justify-between"><span>Furgones de Carga:</span> <span className="font-bold text-white">{logistica.vehiculosCarga}</span></div>
+                </div>
+
+                <div className="bg-[#0a0a0a] p-3 border border-gray-800 rounded-sm">
+                  <h3 className="text-xs text-tinto-accent font-bold uppercase mb-2">Bar & Estaciones Extra</h3>
+                  <div className="flex justify-between"><span>Botellas de Vino:</span> <span className="font-bold text-white">{logistica.botellasVino}</span></div>
+                  <div className="flex justify-between"><span>Botellas Destilados:</span> <span className="font-bold text-white">{logistica.botellasDestilados}</span></div>
+                  <div className="flex justify-between"><span>Litros Cerveza:</span> <span className="font-bold text-white">{logistica.litrosCerveza} L</span></div>
+                  <div className="flex justify-between border-t border-gray-800 mt-2 pt-2"><span>Litros de Café:</span> <span className="font-bold text-white">{logistica.litrosCafe} L</span></div>
+                  <div className="flex justify-between"><span>Porciones de Helado:</span> <span className="font-bold text-white">{logistica.porcionesHelado}</span></div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
