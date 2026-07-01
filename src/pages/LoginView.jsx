@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const LoginView = () => {
@@ -28,11 +28,16 @@ const LoginView = () => {
       const data = await response.json();
       
       
-      if (data.rol === 'ADMIN' || data.rol === 'COORDINADOR') {
-        localStorage.setItem('usuarioLogueado', JSON.stringify(data));
+      localStorage.setItem('usuarioLogueado', JSON.stringify(data));
+
+      
+      if (data.rol === 'ADMIN') {
         navigate('/admin');
+      } else if (data.rol === 'COORDINADOR') {
+        navigate('/coordinador');
       } else {
-       
+        
+        localStorage.removeItem('usuarioLogueado'); 
         throw new Error('Acceso denegado: El personal de cocina u operaciones debe utilizar la aplicación móvil.');
       }
 
@@ -52,14 +57,32 @@ const LoginView = () => {
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
             <label className="block text-xs font-semibold tracking-widest text-gray-400 uppercase mb-2">Usuario</label>
-            <input type="text" name="username" value={credenciales.username} onChange={handleChange} className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors" required />
+            <input 
+              type="text" 
+              name="username" 
+              value={credenciales.username} 
+              onChange={handleChange} 
+              className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors" 
+              required 
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold tracking-widest text-gray-400 uppercase mb-2">Contraseña</label>
-            <input type="password" name="password" value={credenciales.password} onChange={handleChange} className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors" required />
+            <input 
+              type="password" 
+              name="password" 
+              value={credenciales.password} 
+              onChange={handleChange} 
+              className="w-full bg-[#0a0a0a] border border-gray-700 rounded-sm px-4 py-3 text-gray-100 focus:outline-none focus:border-tinto-accent transition-colors" 
+              required 
+            />
           </div>
 
-          <button type="submit" disabled={loading} className="w-full mt-8 bg-tinto-accent text-[#0a0a0a] font-bold uppercase tracking-widest py-4 rounded-sm hover:bg-yellow-600 transition-colors disabled:opacity-50">
+          <button 
+            type="submit" 
+            disabled={loading} 
+            className="w-full mt-8 bg-tinto-accent text-[#0a0a0a] font-bold uppercase tracking-widest py-4 rounded-sm hover:bg-yellow-600 transition-colors disabled:opacity-50"
+          >
             {loading ? 'Verificando...' : 'Iniciar Sesión'}
           </button>
           
